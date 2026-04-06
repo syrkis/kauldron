@@ -1,4 +1,4 @@
-# Copyright 2025 The kauldron Authors.
+# Copyright 2026 The kauldron Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,10 +14,14 @@
 
 import json
 import pathlib
+import pickle
+import types
 
+import dill
 from etils import epy
 from kauldron import konfig
 from kauldron.utils import immutabledict
+import pytest
 
 
 def test_cycles():
@@ -99,6 +103,15 @@ def test_aliases():
   assert repr_('tensorflow_datasets:load') == 'tfds.load'
 
 
+def test_expand_qualname():
+  expand = konfig.configdict_base.expand_qualname
+  assert expand('kd.data:Xxx') == 'kauldron.kd:data.Xxx'
+  assert expand('kd:Trainer') == 'kauldron.kd:Trainer'
+  assert expand('np:int32') == 'numpy:int32'
+  assert expand('nn:Module') == 'flax.linen:Module'
+  assert expand('my.module:Cls') == 'my.module:Cls'
+
+
 def test_indices():
   data = {
       0: {
@@ -139,3 +152,53 @@ def test_module_configdict():
   cfg = konfig.module_configdict.AutoNestedConfigDict()
   cfg.a[0].b = dict(c=2)
   assert cfg.as_flat_dict() == {'a.0.b': konfig.ConfigDict(dict(c=2))}
+
+
+def test_py_flag_overrides():
+  cfg = konfig.ConfigDict({})
+
+  overrides = {
+      'x': 'py::types.SimpleNamespace(a=1)',
+      'y': 'py::pathlib.Path',
+      'y2': 'py::[pathlib.Path, 1]',
+      'z': 'regular_string',
+  }
+  konfig.module_configdict._apply_overrides(cfg, overrides)
+
+  assert cfg.x == konfig.ConfigDict({
+      '__qualname__': 'types:SimpleNamespace',
+      'a': 1,
+  })
+  assert cfg.y == konfig.ConfigDict({
+      '__const__': 'pathlib:Path',
+  })
+  assert cfg.y2 == [
+      konfig.ConfigDict({'__const__': 'pathlib:Path'}),
+      1,
+  ]
+  assert cfg.z == 'regular_string'
+
+  resolved = konfig.resolve(cfg, freeze=False)
+  assert resolved == {
+      'x': types.SimpleNamespace(a=1),
+      'y': pathlib.Path,
+      'y2': [pathlib.Path, 1],
+      'z': 'regular_string',
+  }
+
+
+@pytest.mark.parametrize('pickler', [pickle, dill])
+def test_is_pickable(pickler):
+  cfg = konfig.ConfigDict({
+      'a': 1,
+      'b': 'abc',
+      'c': [1, 2, 3],
+      'd': {
+          'a': 1,
+          'b': 'abc',
+          'c': [1, 2, 3],
+      },
+  })
+  pickled = pickler.dumps(cfg)
+  unpickled = pickler.loads(pickled)
+  assert unpickled == cfg

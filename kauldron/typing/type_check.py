@@ -1,4 +1,4 @@
-# Copyright 2025 The kauldron Authors.
+# Copyright 2026 The kauldron Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -35,6 +35,11 @@ import numpy as np
 
 with epy.lazy_imports():
   import typeguard  # pylint: disable=g-import-not-at-top
+
+  try:
+    from typeguard import _functions as _tg_functions  # pylint: disable=g-import-not-at-top
+  except ImportError:
+    _tg_functions = None
 
 # TODO(epot): Filter the typeguard from the stacktrace.
 
@@ -144,7 +149,6 @@ class TypeCheckError(typeguard.TypeCheckError):
 
   @staticmethod
   def _annotation_repr(ann: Any) -> str:
-    # TODO(klausg): cleanup
     shape_ann = ann
     if typing.get_origin(ann) == types.UnionType:
       shape_ann = ann.__args__[0]
@@ -197,9 +201,19 @@ def _check_argument_types(func, args, kwargs, bound_args, annotations):
           if k in annotations
       }
       memo = typeguard.TypeCheckMemo(func.__globals__, local_ns)
-      typeguard._functions.check_argument_types(  # pylint: disable=protected-access
-          func.__name__, annotated_arguments, memo=memo
-      )
+
+      if _tg_functions is not None and hasattr(
+          _tg_functions, "check_argument_types_internal"
+      ):
+        # In typeguard >= 4.5.0 check_argument_types has been renamed/refactored
+        # so we need to use check_argument_types_internal instead
+        _tg_functions.check_argument_types_internal(  # pylint: disable=protected-access
+            func.__name__, annotated_arguments, memo=memo
+        )
+      else:  # typeguard = 4.4.*
+        typeguard._functions.check_argument_types(  # pylint: disable=protected-access
+            func.__name__, annotated_arguments, memo=memo
+        )
   except typeguard.TypeCheckError:
     raise
   except Exception as e:
@@ -224,9 +238,18 @@ def _check_return_type(func, retval, bound_args, annotations, memo):
       if hasattr(typeguard, "CallMemo"):  # old version of typeguard
         typeguard.check_return_type(retval, memo)
       else:
-        typeguard._functions.check_return_type(  # pylint: disable=protected-access
-            func.__name__, retval, annotations["return"], memo
-        )
+        if _tg_functions is not None and hasattr(
+            _tg_functions, "check_return_type_internal"
+        ):
+          # In typeguard >= 4.5.0 check_return_type has been renamed/refactored
+          # so we need to use check_return_type_internal instead
+          _tg_functions.check_return_type_internal(  # pylint: disable=protected-access
+              func.__name__, retval, annotations["return"], memo
+          )
+        else:  # typeguard = 4.4.*
+          typeguard._functions.check_return_type(  # pylint: disable=protected-access
+              func.__name__, retval, annotations["return"], memo
+          )
   except typeguard.TypeCheckError:
     raise
   except Exception as e:
@@ -577,14 +600,9 @@ def add_custom_checker_lookup_fn(lookup_fn):
   # Add custom array spec checker lookup function to typguard
   # check not for equality but for qualname, to avoid many copies when
   # reloading modules from colab
-  if hasattr(typeguard, "checker_lookup_functions"):
-    # Recent `typeguard` has different API
-    checker_lookup_fns = typeguard.checker_lookup_functions
-  else:
-    # TODO(epot): Remove once typeguard is updated
-    checker_lookup_fns = typeguard.config.checker_lookup_functions
+  checker_lookup_fns = typeguard.checker_lookup_functions
   for i, f in enumerate(checker_lookup_fns):
-    if f.__qualname__ == lookup_fn.__qualname__:
+    if hasattr(f, "__qualname__") and f.__qualname__ == lookup_fn.__qualname__:
       # replace
       checker_lookup_fns[i : i + 1] = [lookup_fn]
       break

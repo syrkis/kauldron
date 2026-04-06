@@ -1,4 +1,4 @@
-# Copyright 2025 The kauldron Authors.
+# Copyright 2026 The kauldron Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -86,6 +86,7 @@ def _create_workdir(workdir: epath.PathLike):
     raise ValueError("--workdir must be set when running on XManager.")
 
   logging.info("Creating workdir: %s", workdir)
+
   workdir.mkdir(parents=True, exist_ok=True)
 
 

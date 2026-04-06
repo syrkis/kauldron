@@ -1,4 +1,4 @@
-# Copyright 2025 The kauldron Authors.
+# Copyright 2026 The kauldron Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ import functools
 import json
 import pathlib
 import types
+from unittest import mock
 
 from etils import epy
 from kauldron import konfig
@@ -238,3 +239,8 @@ def test_configdict_not_freeze():
   c = konfig.resolve(c, freeze=False)
   assert isinstance(c, dict)
   assert isinstance(c["schedules"]["learning_rate"], np.ndarray)
+
+
+def test_resolve_plain_dict_no_frame_crash():
+  with pytest.raises(TypeError):
+    konfig.resolve({"__qualname__": "builtins:int", "bad_kwarg": "x"})

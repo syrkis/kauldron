@@ -1,4 +1,4 @@
-# Copyright 2025 The kauldron Authors.
+# Copyright 2026 The kauldron Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ from typing import Any, ClassVar, Generic, Self, TypeVar
 
 from etils import epy
 from kauldron.konfig import configdict_proxy
+from kauldron.konfig import fake_import_utils
 from kauldron.konfig import utils
 from kauldron.utils import immutabledict
 import ml_collections
@@ -68,6 +69,9 @@ class ConfigDict(ml_collections.ConfigDict):
   ) -> None:
     init_dict = dict(init_dict or {})
     init_dict = _maybe_update_init_dict(init_dict)  # pytype: disable=name-error
+
+    # Capture the frame stack (to trace back where the ConfigDict is created)
+    object.__setattr__(self, '_frame', utils.FrameStack.from_current())
 
     # Normalize here rather than at the individul field level (`__setattr__`),
     # to have a global cache for all shared values (so shared fields are
@@ -418,6 +422,21 @@ def _normalize_qualname(name: str) -> str:
   return name.replace(':', '.')
 
 
+def expand_qualname(qualname: str) -> str:
+  """Expand alias back to full qualname (reverse of `_normalize_qualname`)."""
+  module, _, attr = qualname.partition(':')
+  for full_path, alias in _ALIASES.items():
+    if module == alias:
+      module = full_path
+      break
+    if module.startswith(f'{alias}.'):
+      suffix = module[len(alias) + 1 :]
+      module = full_path
+      attr = f'{suffix}.{attr}' if attr else suffix
+      break
+  return f'{module}:{attr}'
+
+
 def register_aliases(aliases: dict[str, str]) -> None:
   """Register module aliases for nicer display.
 
@@ -540,7 +559,10 @@ def _normalize_config_only_value(value, name, *, id_to_dict) -> Any:
       return type(value)(
           normalize_fn(v, f'{name}[{i}]') for i, v in enumerate(value)
       )
-    case configdict_proxy.ConfigDictProxyObject():
+    case (
+        configdict_proxy.ConfigDictProxyObject()
+        | fake_import_utils.ProxyUnionObject()
+    ):
       # TODO(epot): Rather than inheriting from dict, `ConfigDictProxyObject`
       # could simply implement the `ConfigDictConvertible` protocol
       return value

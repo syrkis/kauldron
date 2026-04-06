@@ -1,4 +1,4 @@
-# Copyright 2025 The kauldron Authors.
+# Copyright 2026 The kauldron Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -31,7 +31,7 @@ from kauldron.data import iterators
 from kauldron.data import pipelines
 from kauldron.data.tf import grain_utils
 from kauldron.data.tf import transform_utils as tr_utils
-from kauldron.typing import PRNGKeyLike, PyTree  # pylint: disable=g-importing-member,g-multiple-import
+from kauldron.ktyping import PRNGKeyLike, PyTree  # pylint: disable=g-importing-member,g-multiple-import
 import tensorflow as tf
 import tensorflow_datasets as tfds
 

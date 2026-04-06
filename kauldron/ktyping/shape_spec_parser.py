@@ -1,4 +1,4 @@
-# Copyright 2025 The kauldron Authors.
+# Copyright 2026 The kauldron Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -51,6 +51,10 @@ class _ShapeSpecTransformer(lark.Transformer):
   def anon_var_dim(self, args: list[Any]) -> shape_spec.AnonDims:
     name = str(args[0]) if args else None
     return shape_spec.AnonDims(name=name, length=None)
+
+  def anon_plus_dim(self, args: list[Any]) -> shape_spec.AnonDims:
+    name = str(args[0]) if args else None
+    return shape_spec.AnonDims(name=name, length=(1, None))
 
   def broadcast_int_dim(self, args: list[Any]) -> shape_spec.IntDim:
     return shape_spec.IntDim(value=int(args[0]), broadcastable=True)
@@ -250,6 +254,7 @@ def _get_expected_tokens(u: lark.UnexpectedInput) -> list[str]:
   ])
 
 
+@functools.lru_cache(maxsize=4096)
 def parse(spec: str) -> shape_spec.ShapeSpec:
   """Parse a shape spec string into a ShapeSpec.
 

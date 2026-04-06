@@ -1,4 +1,4 @@
-# Copyright 2025 The kauldron Authors.
+# Copyright 2026 The kauldron Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -34,7 +34,7 @@ from kauldron import kontext
 from kauldron import random as kd_random
 from kauldron import train
 from kauldron.data import utils as data_utils
-from kauldron.typing import Float, Num, UInt8  # pylint: disable=g-multiple-import
+from kauldron.ktyping import Float, Num, UInt8  # pylint: disable=g-multiple-import
 from kauldron.utils import pd_utils
 from kauldron.utils.sharding_utils import sharding  # pylint: disable=g-importing-member
 import mediapy as media

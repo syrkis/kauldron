@@ -1,4 +1,4 @@
-# Copyright 2025 The kauldron Authors.
+# Copyright 2026 The kauldron Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,9 +14,9 @@
 
 import flax.struct
 import jax.numpy as jnp
+from kauldron.ktyping import Float  # pylint: disable=g-importing-member
 from kauldron.metrics import auto_state
 from kauldron.metrics import base_state
-from kauldron.typing import Float  # pylint: disable=g-importing-member
 import numpy as np
 import pytest
 

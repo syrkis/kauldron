@@ -1,4 +1,4 @@
-# Copyright 2025 The kauldron Authors.
+# Copyright 2026 The kauldron Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -253,7 +253,7 @@ def _transfer_guard() -> Iterator[None]:
   """
   # Only activate this inside the train loop as there's issues like:
   # https://github.com/google/jax/issues/16002
-  if not jax.config.jax_disable_jit:
+  if not jax.config.jax_disable_jit and not jax.config.jax_debug_nans:
     with jax.transfer_guard("disallow"):
       yield
   else:

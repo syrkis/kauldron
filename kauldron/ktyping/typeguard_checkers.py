@@ -1,4 +1,4 @@
-# Copyright 2025 The kauldron Authors.
+# Copyright 2026 The kauldron Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -69,6 +69,46 @@ def check_type(
   if not nested_ok:
     frame_utils.assert_caller_has_active_scope(stacklevel=1)
   return typeguard.check_type(value, expected_type)
+
+
+def isinstance_(obj: Any, class_or_tuple: Any, /) -> bool:
+  """Custom isinstance check that fully supports ktyping and composite types.
+
+  This uses the typeguard library to perform the type checking. That means that
+  even complex types such as `dict[str | None, list[Float["b n"]]]` are
+  fully supported.
+
+  When checking ktyping array types it also checks that the caller has an active
+  ktyping scope, and raises an NoActiveScopeError otherwise.
+
+
+  Args:
+    obj: The object to check.
+    class_or_tuple: The type annotation or tuple of classes to check against.
+
+  Returns:
+    True if the object matches the class_or_tuple.
+
+  Raises:
+    errors.NoActiveScopeError: If checking ktyping array types and no active
+      ktyping scope is found.
+  """
+
+  __ktyping_ignore_frame__ = True  # pylint: disable=invalid-name,unused-variable
+
+  if isinstance(class_or_tuple, tuple):
+    class_or_tuple = functools.reduce(operator.or_, class_or_tuple)
+
+  # For non-array types the scope is irrelevant and we can use a dummy scope.
+  sscope = (
+      scope.get_current_scope()
+      if _contains_any_array_type(class_or_tuple)
+      else scope.ShapeScope()
+  )
+
+  frame = sys._getframe(1)  # pylint: disable=protected-access
+  memo = typeguard.TypeCheckMemo(frame.f_globals, frame.f_locals)
+  return bool(_match_type(obj, class_or_tuple, sscope, memo))
 
 
 def check_type_internal(
@@ -271,6 +311,40 @@ def _array_type_checker(
   shape_scope.candidates = match_result.updated_candidates
 
 
+# MARK: ShapeType chk
+def _shape_type_checker(
+    value: Any,
+    origin_type: Any,
+    args: tuple[Any, ...],
+    memo: typeguard.TypeCheckMemo,
+) -> None:
+  """Custom checker for Shape types with shape specs."""
+  del args, memo  # unused
+  assert array_type_meta.is_shape_type(origin_type)
+  shape_scope = scope.get_current_scope(nested_ok=True)
+
+  # Structural check: must be a valid shape.
+  if not array_type_meta.ShapeMeta.is_valid_shape(value):
+    raise errors.KTypeCheckError(
+        f"is not a valid shape (expected a Sequence of ints, got {value!r})",
+        scope=shape_scope,
+    )
+
+  # Shape spec check: match against the spec and update candidates.
+  if origin_type.shape_spec is not internal_typing.MISSING:
+    updated_candidates = origin_type.shape_matches(
+        value, shape_scope.candidates
+    )
+    if not updated_candidates:
+      shape_str = tuple(value)
+      raise errors.KTypeCheckError(
+          f"has shape {shape_str} which is not shape-compatible with"
+          f" '{origin_type.shape_spec}'",
+          scope=shape_scope,
+      )
+    shape_scope.candidates = updated_candidates
+
+
 # MARK: Union checker
 def _array_type_union_checker(
     value: Any,
@@ -411,8 +485,25 @@ def _pytree_checker(
   import jax  # pylint: disable=g-import-not-at-top
 
   sscope = scope.get_current_scope(nested_ok=True)
-  paths_and_leaves, treedef = jax.tree.flatten_with_path(value)
-  del treedef  # TODO(klausg): remember treedef and check structure
+  leaf_type = origin_type.leaf_type
+  if leaf_type is not internal_typing.MISSING:
+    is_leaf = lambda x: bool(_match_type(x, leaf_type, sscope, memo))
+  else:
+    is_leaf = None
+  paths_and_leaves, treedef = jax.tree.flatten_with_path(value, is_leaf=is_leaf)
+
+  structure_spec = origin_type.structure_spec
+  if structure_spec is not internal_typing.MISSING:
+    updated = _apply_structure_binding(
+        sscope.candidates, structure_spec, treedef
+    )
+    if not updated:
+      raise errors.KTypeCheckError(
+          "tree structure does not match previously bound structure for"
+          f" {structure_spec!r}",
+          scope=sscope,
+      )
+    sscope.candidates = list(updated)
 
   for path, leaf in paths_and_leaves:
     try:
@@ -424,6 +515,22 @@ def _pytree_checker(
           scope=sscope,
           additional_path_element=f"value of tree leaf at path {path_str}",
       )
+
+
+def _apply_structure_binding(
+    candidates: internal_typing.CandidateDims,
+    structure_spec: str,
+    treedef: Any,
+) -> internal_typing.CandidateDims:
+  """Binds or checks a tree structure in the candidate set."""
+  updated = set()
+  for cand in candidates:
+    existing = cand.get(structure_spec, internal_typing.MISSING)
+    if existing is internal_typing.MISSING:
+      updated.add(cand | {structure_spec: treedef})
+    elif existing == treedef:
+      updated.add(cand)
+  return frozenset(updated)
 
 
 # MARK: lookup_fn
@@ -452,6 +559,10 @@ def _array_types_checker_lookup(
   if array_type_meta.is_array_type(origin_type):
     return _array_type_checker
 
+  # If origin_type is a ktyping Shape type, return the `_shape_type_checker`.
+  if array_type_meta.is_shape_type(origin_type):
+    return _shape_type_checker
+
   # If origin_type is the ktyping PyTree type, then return the `_pytree_checker`
   if pytree.is_pytree_type(origin_type):
     return _pytree_checker
@@ -477,6 +588,10 @@ def _contains_any_array_type(hint: Any) -> bool:
   """Recursively check the typehint and all of its arguments for array types."""
   if array_type_meta.is_array_type(hint):
     return True
+  elif pytree.is_pytree_type(hint):
+    return _contains_any_array_type(hint.leaf_type)
+  elif array_type_meta.is_shape_type(hint):
+    return hint.shape_spec is not internal_typing.MISSING
   elif typing.is_typeddict(hint):
     annot = utils.get_type_hints(hint)
     return any(_contains_any_array_type(a) for a in annot.values())

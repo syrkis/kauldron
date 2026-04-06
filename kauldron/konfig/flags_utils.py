@@ -1,4 +1,4 @@
-# Copyright 2025 The kauldron Authors.
+# Copyright 2026 The kauldron Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -32,7 +32,7 @@ def DEFINE_config_file(  # pylint: disable=invalid-name
     flag_values: flags.FlagValues = flags.FLAGS,
     lock_config: bool = False,
     use_legacy_flag: bool = False,
-) -> flags.FlagHolder[configdict_base.ConfigDict]:
+) -> flags.FlagHolder[configdict_base.ConfigDict | None]:
   """Defines flag for `ConfigDict`.
 
   This is similar to `ml_collections.config_flags.DEFINE_config_file`, but
@@ -52,6 +52,7 @@ def DEFINE_config_file(  # pylint: disable=invalid-name
   Returns:
     a handle to defined flag.
   """
+
   assert not lock_config, "lock_config is not supported."
   if use_legacy_flag:
     return config_flags.DEFINE_config_file(
@@ -61,6 +62,7 @@ def DEFINE_config_file(  # pylint: disable=invalid-name
         flag_values=flag_values,
         lock_config=lock_config,
         accept_new_attributes=True,
+        # override_mode=config_flags.OverrideMode.ALWAYS,
     )
   flag = _LazyConfigFlag(
       parser=_RecordConfigFileFlagParser(name=name),
@@ -70,6 +72,7 @@ def DEFINE_config_file(  # pylint: disable=invalid-name
       help_string=help_string,
       flag_values=flag_values,
       accept_new_attributes=True,
+      # override_mode=config_flags.OverrideMode.ALWAYS,
   )
 
   flag_holder = flags.DEFINE_flag(flag, flag_values)
@@ -118,7 +121,7 @@ class _LazyConfigFlag(config_flags._ConfigFlag):
     _value = self._value  # pylint: disable=invalid-name
     assert _value is not None, "None for _value is not supported."
     if isinstance(_value, module_configdict.ModuleConfigDict):
-      return _value.module_config
+      return _value.get_module_config()
     else:
       # absl.testing.flagsaver.save_flag_values copies the value into ._value
       # and then later calls the setter with the original value. This is why

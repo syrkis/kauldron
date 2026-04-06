@@ -1,4 +1,4 @@
-# Copyright 2025 The kauldron Authors.
+# Copyright 2026 The kauldron Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -37,8 +37,7 @@ from kauldron.data import loaders
 from kauldron.data import pipelines
 from kauldron.data import utils
 from kauldron.data.loaders import base as base_data_loader
-from kauldron.ktyping import PyTree  # pylint: disable=g-importing-member
-from kauldron.typing import PRNGKeyLike  # pylint: disable=g-importing-member
+from kauldron.ktyping import PRNGKeyLike, PyTree  # pylint: disable=g-importing-member,g-multiple-import
 from kauldron.utils import config_util
 import tensorflow as tf
 import tensorflow_datasets as tfds

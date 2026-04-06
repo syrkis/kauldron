@@ -1,4 +1,4 @@
-# Copyright 2025 The kauldron Authors.
+# Copyright 2026 The kauldron Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ from typing import Optional
 import einops
 from kauldron.data.tf import transform_utils
 from kauldron.data.transforms import base
-from kauldron.typing import TfArray, TfFloat, TfInt, typechecked  # pylint: disable=g-multiple-import,g-importing-member
+from kauldron.ktyping import TfArray, TfFloat, TfInt, typechecked  # pylint: disable=g-multiple-import,g-importing-member
 import tensorflow as tf
 
 

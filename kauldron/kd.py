@@ -1,4 +1,4 @@
-# Copyright 2025 The kauldron Authors.
+# Copyright 2026 The kauldron Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ from etils import epy as _epy
 # Namespaces
 with _epy.lazy_api_imports(globals()):
   from kauldron import checkpoints as ckpts
+  from kauldron import cli
   from kauldron import data
   from kauldron import evals
   from kauldron import export

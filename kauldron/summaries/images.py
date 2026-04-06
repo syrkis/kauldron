@@ -1,4 +1,4 @@
-# Copyright 2025 The kauldron Authors.
+# Copyright 2026 The kauldron Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ from flax import struct
 import jax.numpy as jnp
 from kauldron import kontext
 from kauldron import metrics
-from kauldron.typing import Array, Bool, Float, Integer, UInt8, check_type, typechecked  # pylint: disable=g-multiple-import,g-importing-member
+from kauldron.ktyping import Array, Bool, Float, Int as Integer, UInt8, check_type, typechecked  # pylint: disable=g-multiple-import,g-importing-member
 import numpy as np
 
 with epy.lazy_imports():

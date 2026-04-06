@@ -1,4 +1,4 @@
-# Copyright 2025 The kauldron Authors.
+# Copyright 2026 The kauldron Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -56,6 +56,7 @@ with _lazy_imports.lazy_api_imports(globals()):
   from kauldron.contrib.data.preprocessing import PadImageEdgeVal
   from kauldron.contrib.data.preprocessing import RandomDropTokens
   from kauldron.contrib.data.preprocessing import RandomFlipLeftRightVideo
+  from kauldron.contrib.data.preprocessing import RandomMapTransform
   from kauldron.contrib.data.preprocessing import RandomResize
   from kauldron.contrib.data.preprocessing import RandomSubsetAlongAxis
   from kauldron.contrib.data.preprocessing import Repeat
@@ -72,6 +73,7 @@ with _lazy_imports.lazy_api_imports(globals()):
   from kauldron.contrib.data.preprocessing import TemporalRandomWalk
   from kauldron.contrib.data.preprocessing import TemporalRandomWindow
   from kauldron.contrib.data.preprocessing import TimeChunkedFlattenVideo
+  from kauldron.contrib.data.preprocessing import TreeUnflattenForKey
   from kauldron.contrib.data.preprocessing import VStack
   from kauldron.contrib.data.preprocessing import ValueRange
   from kauldron.contrib.data.preprocessing import VideoMAENormalization

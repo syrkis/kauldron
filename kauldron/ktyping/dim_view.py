@@ -1,4 +1,4 @@
-# Copyright 2025 The kauldron Authors.
+# Copyright 2026 The kauldron Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,10 +22,12 @@ import immutabledict
 from kauldron.ktyping import errors
 from kauldron.ktyping import internal_typing
 from kauldron.ktyping import scope as kscope
+from kauldron.ktyping import utils
 
 DimValue = internal_typing.DimValue
 DimValues = internal_typing.DimValues
 MISSING = internal_typing.MISSING
+UNKNOWN_DIM = internal_typing.UNKNOWN_DIM
 
 
 class DimView:
@@ -98,6 +100,7 @@ class DimView:
     """Returns True if the dimension is defined in all candidates."""
     __ktyping_ignore_frame__ = True  # pylint: disable=unused-variable
 
+    _, name = _get_dim_type(name)
     values = {alt.get(name, MISSING) for alt in self._scope.candidates}
     if MISSING in values:
       return False
@@ -118,7 +121,9 @@ class DimView:
           f"Got: {value}"
       )
     if dim_type == _DimType.SINGLE:
-      if not isinstance(value, int):
+      if not isinstance(value, int) and not internal_typing.is_symbolic_dim(
+          value
+      ):
         raise ValueError(
             f"Single dims ({name!r}) must be assigned an int. Got: {value}"
         )
@@ -164,7 +169,8 @@ class DimView:
   def __str__(self) -> str:
     __ktyping_ignore_frame__ = True  # pylint: disable=unused-variable
 
-    all_dims = {dim for cand in self._scope.candidates for dim in cand}  # pylint: disable=g-complex-comprehension
+    # TODO(klausg): add useful display of structure assignments as well
+    all_dims = {dim for cand in self._scope.candidates for dim in cand if not internal_typing.is_structure_key(dim)}  # pylint: disable=g-complex-comprehension
     ambiguous_dims = {}
     unambiguous_dims = {}
     for d in all_dims:
@@ -211,11 +217,8 @@ class DimView:
 
 
 def _format_dim_value(value: DimValue) -> str:
-  str_values = [str(v) if isinstance(v, int) else "#" for v in value]
-  if len(value) == 1:
-    return str_values[0]
-  else:
-    return f"({', '.join(str_values)})"
+  """Formats a DimValue tuple into a human-readable string."""
+  return utils.format_dim_value(value)
 
 
 def _format_dim_assignment(dim_name: str, value: DimValue, align: int) -> str:
@@ -230,7 +233,9 @@ def _format_dim_assignment(dim_name: str, value: DimValue, align: int) -> str:
 def _format_ambiguous_dim(
     dim_name: str, values: list[DimValue], align: int
 ) -> str:
-  is_tuple = any(len(v) > 1 for v in values)
+  """Formats a dimension with multiple ambiguous candidate values."""
+  defined_values = [v for v in values if v is not MISSING]
+  is_tuple = any(len(v) > 1 for v in defined_values)
 
   if is_tuple:
     dim_name = f"*{dim_name}".rjust(align)

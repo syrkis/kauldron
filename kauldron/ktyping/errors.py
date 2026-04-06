@@ -1,4 +1,4 @@
-# Copyright 2025 The kauldron Authors.
+# Copyright 2026 The kauldron Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -161,10 +161,24 @@ class KTypeCheckError(TypeCheckError):
 
     for candidate in self.candidates:
       dim_assignments = [
-          _format_dim_assignment(dim, value) for dim, value in candidate.items()
+          _format_dim_assignment(dim, value)
+          for dim, value in candidate.items()
+          if not internal_typing.is_structure_key(dim)
       ]
       dims = ", ".join(dim_assignments)
       scope_lines.append(f" - {{{dims}}}")
+
+    tree_structures = {}
+    for candidate in self.candidates:
+      for key, value in candidate.items():
+        if internal_typing.is_structure_key(key):
+          tree_structures[key] = value
+    if tree_structures:
+      scope_lines.append("Tree Structures:")
+      for key, value in tree_structures.items():
+        # TODO(klausg): abbreviated display for long treedefs
+        scope_lines.append(f"  {key}: {value}")
+
     return "\n".join(scope_lines)
 
   def _format_arg_line(self, name, value, annot):
@@ -190,9 +204,9 @@ class KTypeCheckError(TypeCheckError):
 
 def _format_dim_assignment(dim, value):
   if len(value) == 1:
-    return f"{dim}: {value[0]}"
+    return f"{dim}: {utils.format_dim_value(value)}"
   else:
-    return f"*{dim}: {value}"
+    return f"*{dim}: {utils.format_dim_value(value)}"
 
 
 # MARK: Error messages
@@ -245,6 +259,6 @@ def shape_error_message(
     )
   else:
     return (
-        f"has shape {value.shape} which  is not shape-compatible with any of"
+        f"has shape {value.shape} which is not shape-compatible with any of"
         f" {acceptable_shapes!r}{array_spec_str}."
     )

@@ -1,4 +1,4 @@
-# Copyright 2025 The kauldron Authors.
+# Copyright 2026 The kauldron Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
 # limitations under the License.
 
 """Common array type definitions."""
-
+from typing import Sequence
 from kauldron.ktyping import array_type_meta as atm
 from kauldron.ktyping import dtypes
 from kauldron.ktyping import internal_typing
@@ -64,17 +64,6 @@ Complex = atm.ArrayTypeMeta(
 )
 Complex64 = atm.ArrayTypeMeta("Complex64", dtype=dtypes.complex64)
 Complex128 = atm.ArrayTypeMeta("Complex128", dtype=dtypes.complex128)
-
-
-# RNG keys
-# Support both uint32 and the newer jax.dtypes.prng_key dtypes.
-# See: https://docs.jax.dev/en/latest/jep/9263-typed-keys.html
-PRNGKey = atm.ArrayTypeMeta(
-    "PRNGKey", dtype=dtypes.prng_key | dtypes.uint32, shape_spec="2"
-)
-
-# Only support new jax.dtypes.prng_key dtype for the array of prgn keys.
-PRNGKeyArray = atm.ArrayTypeMeta("PRNGKeyArray", dtype=dtypes.prng_key)
 
 
 # MARK: tf ArrayTypes
@@ -135,7 +124,7 @@ def _create_x_type(name, dtype=MISSING):
 
 
 # Generic array type.
-XArray = _create_x_type("XArray", None)
+XArray = _create_x_type("XArray")
 
 # Any numerical type: int, float, complex, etc. but NOT bool.
 # see also https://numpy.org/doc/2.1/reference/arrays.scalars.html#scalars
@@ -209,5 +198,26 @@ ScalarComplex = atm.ArrayTypeMeta(
 )
 
 
-# MARK: Shape types
+# MARK: PRNG keys
+# New-style PRNG keys
+# See: https://docs.jax.dev/en/latest/jep/9263-typed-keys.html
+Fry = atm.ArrayTypeMeta("Fry", dtype=dtypes.prng_key)
+# Single key (supports both new and old style)
+PRNGKey = UInt32["2"] | Fry[""] | atm.KdPRNGKey
+# Array of keys (e.g. after split)
+PRNGKeyArray = UInt32["... 2"] | Fry["..."] | atm.KdPRNGKey
+# Permissive type for PRNG keys, integers, or sequences of integers that can be
+# used as sources of entropy for functions like `np.random.default_rng`.
+# Note that functions in `jax.random` do not support sequences of integers for
+# this while `numpy.random` typically does.
+PRNGKeyLike = PRNGKey | ScalarInt | Sequence[int]
+
+
+# MARK: Other
+
+# Roughly equivalent to Sequence[int], but also handles symbolic dimensions
+# which is useful for jax.export.
 Shape = atm.ShapeMeta("Shape")
+# Any object that has `shape` and `dtype` attributes (but is not an array).
+# E.g. enp.ArraySpec, tf.TensorSpec, jax.ShapeDtypeStruct, etc.
+ArraySpec = atm.ArrayTypeMeta("ArraySpec", array_types=(atm.ArraySpecLike,))

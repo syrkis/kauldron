@@ -1,4 +1,4 @@
-# Copyright 2025 The kauldron Authors.
+# Copyright 2026 The kauldron Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,14 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import jax
 import jax.numpy as jnp
+from kauldron import ktyping as kt
 from kauldron.ktyping import array_type_meta as atm
 from kauldron.ktyping import array_types as art
 from kauldron.ktyping import dtypes
 import numpy as np
 import pytest
-
-# TODO(klausg): test tf and torch types
+import tensorflow as tf
 
 
 def test_array_type_creation():
@@ -214,6 +215,188 @@ def test_shape():
   assert not isinstance([0.2, None, 3], art.Shape)
 
 
+def test_shape_symbolic():
+  (sym_b,) = jax.export.symbolic_shape("B")
+  assert isinstance((sym_b, 128), art.Shape)
+  assert isinstance([sym_b, 64, 32], art.Shape)
+  assert not isinstance([sym_b, None, 3], art.Shape)
+
+
 def test_shape_call_raises():
   with pytest.raises(RuntimeError, match="cannot be instantiated"):
     art.Shape("b n")
+
+
+def test_shape_getitem():
+  """Shape['*b t'] creates a new ShapeMeta with shape_spec."""
+  s = art.Shape["*b t"]
+  assert isinstance(s, atm.ShapeMeta)
+  assert s.shape_spec == "*b t"
+  assert s.__name__ == "Shape['*b t']"
+
+
+def test_shape_getitem_isinstance():
+  """isinstance works with parameterized Shape (no scope)."""
+  assert isinstance((3, 4, 5), art.Shape["*b t"])
+  assert isinstance((7,), art.Shape["*b t"])
+  assert isinstance((1, 2, 3, 4), art.Shape["*b t"])
+  # Non-shape values still fail.
+  assert not isinstance("hello", art.Shape["*b t"])
+  assert not isinstance([0.5, None], art.Shape["*b t"])
+
+
+def test_shape_getitem_isinstance_fixed():
+  """isinstance with fixed dims checks concrete values."""
+  assert isinstance((3, 4), art.Shape["3 4"])
+  assert not isinstance((3, 5), art.Shape["3 4"])
+  assert not isinstance((3,), art.Shape["3 4"])
+
+
+def test_shape_double_spec_raises():
+  """Shape['a']['b'] raises TypeError."""
+  with pytest.raises(TypeError, match="redefine shape spec"):
+    _ = art.Shape["a"]["b"]
+
+
+def test_shape_getitem_non_string_raises():
+  """Shape[123] raises TypeError."""
+  with pytest.raises(TypeError, match="expects a string"):
+    _ = art.Shape[123]
+
+
+def test_shape_getitem_repr():
+  s = art.Shape["*b t"]
+  assert repr(s) == "Shape['*b t']"
+
+
+def test_shape_unparameterized_still_works():
+  """Bare Shape still works as before (no shape_spec)."""
+  assert isinstance((1, 2, 3), art.Shape)
+  assert isinstance([5, 6], art.Shape)
+  assert not isinstance([None, 3], art.Shape)
+
+
+def test_xarray_accepts_any_dtype():
+  for dtype in (np.float32, np.int32, np.bool_, np.complex64, np.uint8):
+    assert art.XArray.dtype_matches(np.empty((), dtype=dtype))
+    assert isinstance(np.zeros((2, 3), dtype=dtype), art.XArray)
+
+
+def test_tf_array_type_match_eager():
+  t = tf.constant(np.zeros((2, 5, 5, 3), dtype=np.float32))
+  assert art.TfArray.array_types_match(t)
+  assert art.TfFloat.array_types_match(t)
+  assert art.TfFloat.dtype_matches(t)
+  assert art.TfFloat.shape_matches(t)
+
+
+def test_tf_array_type_match_with_shape_spec_eager():
+  t = tf.constant(np.zeros((2, 5, 5, 3), dtype=np.float32))
+  tf_type = art.TfArray["B H W C"]
+  assert tf_type.array_types_match(t)
+  assert tf_type.dtype_matches(t)
+  assert tf_type.shape_matches(t)
+
+
+def test_tf_array_type_match_with_shape_spec_graph():
+  with tf.Graph().as_default():
+    t = tf.reshape(tf.range(150), (2, 5, 5, 3))
+    tf_type = art.TfArray["B H W C"]
+    assert tf_type.array_types_match(t)
+    assert tf_type.dtype_matches(t)
+    assert tf_type.shape_matches(t)
+
+
+def test_tf_array_isinstance_eager():
+  t = tf.constant(np.zeros((2, 5, 5, 3), dtype=np.int32))
+  assert isinstance(t, art.TfArray["B H W C"])
+
+
+def test_tf_array_isinstance_graph():
+  with tf.Graph().as_default():
+    t = tf.reshape(tf.range(150), (2, 5, 5, 3))
+    assert isinstance(t, art.TfArray["B H W C"])
+
+
+@pytest.mark.parametrize("key_type", (jax.random.key, jax.random.PRNGKey))
+def test_prng_key_array_dtype(key_type):
+  with kt.typechecked():
+    key = key_type(0)
+    assert kt.isinstance(key, art.PRNGKeyArray)
+    assert kt.isinstance(key, art.PRNGKey)
+    assert isinstance(key, art.PRNGKey)
+    assert isinstance(key, art.PRNGKeyArray)
+
+    keys = jax.random.split(key, 4)
+    assert kt.isinstance(keys, art.PRNGKeyArray)
+    assert isinstance(keys, art.PRNGKeyArray)
+
+    assert not art.Float32.dtype_matches(key)
+
+    key = jax.random.key(0)
+    assert not art.Int.dtype_matches(key)
+
+
+def test_kd_random_prng_key_isinstance():
+  """Test isinstance checks for kauldron.random.PRNGKey."""
+  from kauldron.random import random as kd_random  # pylint: disable=g-import-not-at-top
+
+  kd_key = kd_random.PRNGKey(0)
+
+  assert isinstance(kd_key, art.PRNGKey)
+  assert isinstance(kd_key, art.PRNGKeyArray)
+
+
+def test_kd_random_prng_key_kt_isinstance():
+  """Test kt.isinstance checks for kauldron.random.PRNGKey."""
+  from kauldron.random import random as kd_random  # pylint: disable=g-import-not-at-top
+
+  kd_key = kd_random.PRNGKey(0)
+
+  with kt.typechecked():
+    assert kt.isinstance(kd_key, art.PRNGKey)
+    assert kt.isinstance(kd_key, art.PRNGKeyArray)
+    kt.check_type(kd_key, art.PRNGKey)
+
+
+def test_kd_random_prng_key_split():
+  """Test kauldron.random.PRNGKey instances after split."""
+  from kauldron.random import random as kd_random  # pylint: disable=g-import-not-at-top
+
+  kd_key = kd_random.PRNGKey(0)
+  kd_keys = kd_key.split(4)
+
+  assert isinstance(kd_keys, art.PRNGKeyArray)
+  with kt.typechecked():
+    assert kt.isinstance(kd_keys, art.PRNGKeyArray)
+
+
+def test_array_spec():
+  from etils import enp  # pylint: disable=g-import-not-at-top
+
+  spec = enp.ArraySpec(shape=(3, 4), dtype=np.float32)
+  assert isinstance(spec, art.ArraySpec)
+
+  spec_int = enp.ArraySpec(shape=(2,), dtype=np.int32)
+  assert isinstance(spec_int, art.ArraySpec)
+
+  scalar_spec = enp.ArraySpec(shape=(), dtype=np.float32)
+  assert isinstance(scalar_spec, art.ArraySpec)
+
+  sds = jax.ShapeDtypeStruct(shape=(3, 4), dtype=np.float32)
+  assert isinstance(sds, art.ArraySpec)
+
+  assert not isinstance(np.zeros((3, 4), dtype=np.float32), art.ArraySpec)
+  assert not isinstance(jnp.zeros((3, 4), dtype=np.float32), art.ArraySpec)
+  assert not isinstance(np.empty((5, 3)), art.ArraySpec)
+
+  assert not isinstance(1.0, art.ArraySpec)
+  assert not isinstance("hello", art.ArraySpec)
+
+  spec_with_shape = art.ArraySpec["3 4"]
+  assert isinstance(spec, spec_with_shape)
+  assert not isinstance(
+      enp.ArraySpec(shape=(2, 3), dtype=np.float32), spec_with_shape
+  )
+
+  assert isinstance(sds, spec_with_shape)

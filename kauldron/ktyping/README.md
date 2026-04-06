@@ -108,6 +108,85 @@ def foo(x: VeryUsefulArray["a b c"]):
   ...
 ```
 
+## PyTree Types
+
+`PyTree[T]` annotates nested containers (dicts, lists, tuples, etc.) whose
+leaves are all of type `T`.
+
+```python
+import kauldron.ktyping as kt
+from kauldron.ktyping import PyTree
+
+@kt.typechecked
+def total(x: PyTree[int]) -> int:
+  return jax.tree.reduce(lambda a, b: a + b, x)
+
+total({"a": 1, "b": [2, 3]})  # ok
+```
+
+WARNING: **All of the leaves** of a `PyTree[T]` are typechecked at runtime,
+  which can potentially be slow for large pytrees.
+
+## Other Annotation Types
+
+* `Shape`: Roughly equivalent to `tuple[int, ...]` with a few important
+differences:
+  * Support for `jax.export.symbolic_shape` without raising `TypeCheckError`
+  * Can be parametrized: `Shape["*b n"]` just like array types.
+    NOTE: This is purely an annotation. Do not confuse this with
+    `kt.shape("*b n")` which is a function that returns a tuple of ints.
+
+* `DType`: Permissive dtype annotation that accepts:
+  * strings like 'float32', 'int32'
+  * types like np.float32, np.int32, float, int
+  * np.dtype objects like np.dtype('float32'), np.dtype('int32')
+  * jax dtypes like jnp.float32, jnp.int32
+
+* `ArraySpec`: Any object that has `shape` and `dtype` attributes
+  (but is not an array). E.g. `etils.enp.ArraySpec`, `tf.TensorSpec`,
+  `jax.ShapeDtypeStruct`, etc.
+
+* `ElementSpec = PyTree[ArraySpec]`
+* `PRNGKey` Single prng key (supports both new and old style jax keys)
+* `PRNGKeyArray` Multiple keys e.g. as returned by `jax.random.split`
+* `PRNGKeyLike` Permissive type for PRNG keys, integers, or sequences of
+  integers that can be used as sources of entropy for functions like
+  `np.random.default_rng`. Note that functions in `jax.random` do not support
+   sequences of integers for this while `numpy.random` typically does.
+
+### Named Structures
+
+Use `PyTree[T, "$S"]` to bind the tree structure to a name. When the same
+name appears on multiple parameters, `ktyping` verifies that they share the
+same `PyTreeDef` (same nesting of dicts/lists/tuples with the same keys).
+
+```python
+@kt.typechecked
+def tree_add(
+    x: pytree.PyTree[Float["*b"], "$S"],
+    y: pytree.PyTree[Float["*b"], "$S"],
+) -> pytree.PyTree[Float["*b"], "$S"]:
+  return jax.tree.map(lambda a, b: a + b, x, y)
+
+# ok - both dicts with keys "a", "b"
+tree_add({"a": f32[3], "b": f32[3]}, {"a": f32[3], "b": f32[3]})
+
+# fails - different structures (dict vs list)
+tree_add({"a": f32[3]}, [f32[3]])
+```
+
+Structure names must start with `$` (e.g. `"$S"`, `"$Tree"`).
+Different names track independent structures:
+
+```python
+@kt.typechecked
+def cross(
+    x: pytree.PyTree[int, "$A"],
+    y: pytree.PyTree[int, "$B"],
+) -> None:
+  ...  # $A and $B are checked independently
+```
+
 ## `kt.typechecked`
 `kt.typechecked` enables runtime type checking (using `typeguard`).
 It can be used as a decorator for functions and dataclasses, or as a
@@ -144,7 +223,7 @@ class PointCloud:
   color: UInt8["n 3"]
 
 # Fails because n from pos is different than n from color:
-p = PointCloud(pos=np.zeros((17, 3)), color=np.ones((16, 3, dtype=np.uint8)))
+p = PointCloud(pos=np.zeros((17, 3)), color=np.ones((16, 3), dtype=np.uint8))
 ```
 
 Decorating any `dataclass` with `@kt.typechecked` has two effects:
@@ -181,6 +260,36 @@ def manual(x: Float["*b h w c"]):
 
 Note that `kt.check_type` can only be called from within a `kt.typechecked`
 function or context.
+
+### `kt.isinstance`
+`ktyping`'s custom `kt.isinstance` behaves like the built-in `isinstance` but it
+fully supports:
+
+ * ktyping annotations like `Float["b"]` (requires an active scope)
+ * Parameterized types like `dict[str, int]` or `list[bool]`.
+ * Union Types like `Union[byte, str]`, `int | float`, or `Optional[int]`
+
+```python
+@kt.typechecked
+def fn(x: Float["*b h w c"]):
+  if kt.isinstance(x, Float["1 h w 3"]):
+    print("Found single image")
+```
+`kt.isinstance` behaves as follows:
+
+  * It returns either `True` or `False`.
+  * Unlike `kt.check_type` it **never modifies** the active scope.
+  * It only requires an active scope when checking ktyping annotations. <br/>
+    (i.e. `kt.isinstance(x, list[int] | int))` works even without an active scope)
+  * Be aware that only the first element of container types are checked. <br/>
+    (i.e. `kt.isinstance([1, "2"], list[int]) == True`).
+
+Note: Python's built-in `isinstance(x, kt.Float["b"])` can also be used with
+ktyping annotations, and works even without an active scope
+(see [Working without an active scope](#working-without-an-active-scope)).
+However, this is not recommended since it will silently reuse a parent scope
+without raising an error
+(e.g. when a `@kt.typechecked` decorator was forgotten).
 
 ## Scopes
 Dimension assignments (e.g. `b=32`) are tracked using a stack of
@@ -569,9 +678,17 @@ submodules):
   the same `TypedDict` annotation can be reused for multiple arguments without
   requiring identical dimensions for all items.
 
-* **Limited `PyTree` support**: Currently, `ktyping` only supports annotations
-  like `PyTree[int]`, and does not support checking named structures like
-  `PyTree[int, "S"]` yet.
+* **`PyTree` structures**: `ktyping` supports named PyTree structures via
+  `PyTree[T, "$S"]`, with the same bind-on-first-use semantics as dimension
+  names. Unlike `jaxtyping`, structure names use a `$` prefix to clearly
+  separate them from dimension names. Composing pytree structures in the
+  structure spec (e.g. `PyTree[T, "$S $T"]`) is not yet supported.
+
+* **Symbolic dimensions**: `ktyping` supports JAX's symbolic dimensions
+  (as used by `jax.export` for shape polymorphism). This means `@typechecked`
+  functions work seamlessly with `jax.export.symbolic_shape` and variable
+  batch sizes, without raising `TypeCheckError`s. `jaxtyping` does not support
+  symbolic dimensions.
 
 ## Migration
 
@@ -624,6 +741,9 @@ def fn(x: Float["b d"], y: Int["b"]) -> Float["b d"]:
   `s = Shape("*b n 1")`.
   In `ktyping`, `Shape` can still be used as an annotation, but the latter
   use-case is replaced by the (lowercase) function `s = kt.shape("*b n 1")`.
+  Additionally, `Shape` now supports parameterized specs: `s: Shape["*b n"]`
+  validates the shape and binds the named dims into the scope, just like
+  array annotations.
 * Replace `Dim()` function calls with access to `kt.dim`. E.g.
   `h = Dim("h")` becomes `h = kt.dim["h"]`
 * Replace `set_shape()` with either `kt.dim` assignment or `check_type`.
@@ -633,8 +753,8 @@ def fn(x: Float["b d"], y: Int["b"]) -> Float["b d"]:
   `kt.check_type(np.empty((1, 2, 3, 4)), Array["b h w c"])`, or (preffered) a
   set of single dim assignments via `kt.dim`.
 * `kauldron.typing` includes a few symbols that are not part of `ktyping`, such
-  as `Initializer`, `Schedule`, `Axes`, `AxisName`, `ArraySpec`, and
-  `ElementSpec`. Just keep importing them from `kauldron.typing` for now.
+  as `Initializer`, `Schedule`, `Axes`, `AxisName`. Just keep importing them
+  from `kauldron.typing` for now.
 
 **Example:**
 

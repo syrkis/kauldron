@@ -1,4 +1,4 @@
-# Copyright 2025 The kauldron Authors.
+# Copyright 2026 The kauldron Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,12 +20,13 @@ import dataclasses
 import functools
 from typing import Any
 
+from etils import enp
 import flax.linen as nn
 import jax
 import jax.numpy as jnp
 from kauldron import kontext
+from kauldron.ktyping import ArraySpec, ElementSpec, PyTree  # pylint: disable=g-multiple-import,g-importing-member
 from kauldron.train import context as context_lib
-from kauldron.typing import ArraySpec, ElementSpec, PyTree  # pylint: disable=g-multiple-import,g-importing-member
 from kauldron.utils import _jax
 from kauldron.utils import sharding_utils
 import numpy as np
@@ -106,7 +107,7 @@ def get_global_elem_spec(
   """Converts the per-host element spec to a global element spec."""
 
   def _get_global_shape(spec):
-    return ArraySpec(
+    return enp.ArraySpec(
         shape=_jax.local_to_global_shape(spec.shape, sharding=elem_sharding),
         dtype=spec.dtype,
     )

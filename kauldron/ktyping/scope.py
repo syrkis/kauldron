@@ -1,4 +1,4 @@
-# Copyright 2025 The kauldron Authors.
+# Copyright 2026 The kauldron Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -85,7 +85,7 @@ class ShapeScope(epy.ContextManager):
     self.arguments = arguments if arguments is not None else {}
     self.annotations = annotations if annotations is not None else {}
     self.fstring_locals = fstring_locals if fstring_locals is not None else {}
-    self.default_args = default_args or set()
+    self.default_args = default_args if default_args is not None else ()
     self.return_value = MISSING
 
     self._check_for_jaxtyping_annotations()
@@ -135,6 +135,7 @@ class ShapeScope(epy.ContextManager):
 
   def _check_for_jaxtyping_annotations(self) -> None:
     """Warns about non-ktyping types in the annotations to help migrations."""
+    # TODO(klausg): this is somewhat slow. Only execute it once per function.
     reporting_policy = config.get_config(self.source).jaxtyping_annotations
     for name, annot in self.annotations.items():
       if utils.contains_jaxtyping_type(annot):

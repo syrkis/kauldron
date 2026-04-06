@@ -1,4 +1,4 @@
-# Copyright 2025 The kauldron Authors.
+# Copyright 2026 The kauldron Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -80,8 +80,7 @@ def select(pattern: str | Sequence[str]) -> Callable[[_PyTree], _PyTree]:
     return any(bool(p.search(path_str)) for p in pattern_regexes)
 
   def _make_mask(tree: _PyTree) -> _PyTree:
-    # TODO(epot): Replace by `jax.tree.flatten_with_path` once Colab is updated
-    leaves_with_path, treedef = jax.tree_util.tree_flatten_with_path(tree)
+    leaves_with_path, treedef = jax.tree.flatten_with_path(tree)
 
     # Parse each leaves
     leaves = []

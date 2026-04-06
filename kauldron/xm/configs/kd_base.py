@@ -1,4 +1,4 @@
-# Copyright 2025 The kauldron Authors.
+# Copyright 2026 The kauldron Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -48,6 +48,7 @@ def get_config():
           xprof_port=True,
           g3pdb_port=True,
       ),
+      cell='viglobal',  # Reasonable default for most projects
       subdir_format=kxm.SubdirFormat(
           wu_dirname='{wid}{separator_if_sweep}{sweep_kwargs}',
       ),

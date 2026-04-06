@@ -1,4 +1,4 @@
-# Copyright 2025 The kauldron Authors.
+# Copyright 2026 The kauldron Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ from typing import Any, Callable, Generator
 
 from etils import enp  # pylint: disable=g-importing-member
 from kauldron.ktyping import frame_utils
+from kauldron.ktyping import internal_typing
 import numpy as np
 
 TYPE_HINT_CACHING_KEY = "_ktyping_type_hint_cache"
@@ -81,8 +82,13 @@ def get_type_name(type_: Any, full_path: bool = False) -> str:
 def format_value(val: Any, truncate: int | None = 40):
   """Returns a string representation of any value with array spec formatting."""
   if enp.ArraySpec.is_array(val):
-    # Return type shorthand + ArraySpec for arrays (e.g. np.f32[32 32 3]).
     spec = enp.ArraySpec.from_array(val)
+    if spec is None:
+      return repr(val)
+    spec.shape = tuple(
+        str(s) if internal_typing.is_symbolic_dim(s) else s
+        for s in spec.shape
+    )
     array_type = _get_array_type_shorthand(val)
     return f"{array_type}.{spec}"
 
@@ -103,6 +109,24 @@ def _get_array_type_shorthand(array: Any) -> str:
   elif enp.lazy.has_tf and isinstance(array, enp.lazy.tf.Tensor):
     return "tf"
   return get_type_name(array)
+
+
+# MARK: format_dim_value
+def format_dim_value(value: internal_typing.DimValue) -> str:
+  """Formats a DimValue tuple into a human-readable string."""
+
+  def _fmt(v):
+    if isinstance(v, int):
+      return str(v)
+    if v == internal_typing.UNKNOWN_DIM:
+      return "#"
+    return f"&{v}"
+
+  str_values = [_fmt(v) for v in value]
+  if len(value) == 1:
+    return str_values[0]
+  else:
+    return f"({', '.join(str_values)})"
 
 
 # MARK: get_type_hints
@@ -225,12 +249,13 @@ class CodeLocation:
     __ktyping_ignore_frame__ = True  # pylint: disable=unused-variable
 
     caller_frame = frame_utils.get_caller_frame(stacklevel=stacklevel)
-    filename = caller_frame.filename
+    caller_frame_info = inspect.getframeinfo(caller_frame)
+    filename = caller_frame_info.filename
     module_name = inspect.getmodulename(filename) or "<unknown>"
     return cls(
         description=description,
         file=filename,
-        line=caller_frame.lineno,
+        line=caller_frame_info.lineno,
         module_name=module_name,
     )
 

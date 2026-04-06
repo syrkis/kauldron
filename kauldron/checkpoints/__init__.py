@@ -1,4 +1,4 @@
-# Copyright 2025 The kauldron Authors.
+# Copyright 2026 The kauldron Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,6 +25,3 @@ from kauldron.checkpoints.partial_loader import MultiTransform
 from kauldron.checkpoints.partial_loader import NoopTransform
 from kauldron.checkpoints.partial_loader import PartialKauldronLoader
 from kauldron.checkpoints.partial_loader import workdir_from_xid
-
-# Deprecated alias for backward compatibility.
-AbstractPartialLoader = InitTransform

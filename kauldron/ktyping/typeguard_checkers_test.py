@@ -1,4 +1,4 @@
-# Copyright 2025 The kauldron Authors.
+# Copyright 2026 The kauldron Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,16 +15,39 @@
 import dataclasses
 import typing
 from typing import Annotated, Never, NoReturn, Optional, Union
+
+import jax
+from kauldron.ktyping import dim_view
 from kauldron.ktyping import errors
 from kauldron.ktyping import frame_utils
 from kauldron.ktyping import pytree
+from kauldron.ktyping import scope as scope_mod
 from kauldron.ktyping import typeguard_checkers as tgc
-from kauldron.ktyping.array_types import Float, Int, Scalar, ScalarInt  # pylint: disable=g-multiple-import
+from kauldron.ktyping.array_types import Float, Int, Scalar, ScalarInt, Shape  # pylint: disable=g-multiple-import
 from kauldron.ktyping.decorator import typechecked  # pylint: disable=g-importing-member
 from kauldron.ktyping.typeguard_checkers import check_type  # pylint: disable=g-importing-member
 import numpy as np
 import pytest
 import typeguard
+
+
+class _LeafNode:
+
+  def __init__(self, x, y):
+    self.x = x
+    self.y = y
+
+  def __eq__(self, other):
+    return (
+        isinstance(other, _LeafNode) and self.x == other.x and self.y == other.y
+    )
+
+
+jax.tree_util.register_pytree_node(
+    _LeafNode,
+    lambda node: ((node.x, node.y), None),
+    lambda _, children: _LeafNode(*children),
+)
 
 
 def test_contains_any_array_type():
@@ -157,6 +180,74 @@ def test_check_type_in_typechecked_function():
   assert f(x) is None  # no error
 
 
+def test_simple_types():
+  assert tgc.isinstance_(1, int)
+  assert not tgc.isinstance_(1, str)
+  assert tgc.isinstance_(1, (str, int))
+  assert tgc.isinstance_(1, int | str)
+  assert tgc.isinstance_(None, Optional[int])
+  assert not tgc.isinstance_(1.0, int)
+
+
+def test_composite_types():
+  assert tgc.isinstance_([1, 2], list[int])
+  assert not tgc.isinstance_(["1", "2"], list[int])
+  assert tgc.isinstance_({"a": 1}, dict[str, int])
+  assert not tgc.isinstance_({"a": "1"}, dict[str, int])
+
+
+def test_array_types_with_scope():
+  x = np.zeros((2, 3), dtype=np.float32)
+  y = np.ones(4, dtype=np.int32)
+  with typechecked():
+    assert tgc.isinstance_(x, Float["2 3"])
+    assert tgc.isinstance_(x, Float["a b"])
+    assert not tgc.isinstance_(x, Float["2 4"])
+    assert not tgc.isinstance_(x, Int["2 3"])
+    assert tgc.isinstance_(y, Int["4"])
+    assert tgc.isinstance_(y, Int["c"])
+
+
+def test_array_types_no_scope_fails():
+  x = np.zeros((2, 3), dtype=np.float32)
+  with pytest.raises(frame_utils.NoActiveScopeError):
+    tgc.isinstance_(x, Float["2 3"])
+
+
+def test_mixed_array_and_simple_types_with_scope():
+  x = np.zeros((2, 3), dtype=np.float32)
+  with typechecked():
+    assert tgc.isinstance_(x, Float["2 3"] | int)
+    assert tgc.isinstance_(12, Float["2 3"] | int)
+    assert not tgc.isinstance_("a", Float["2 3"] | int)
+    assert tgc.isinstance_([x], list[Float["2 3"]])
+    assert not tgc.isinstance_([12], list[Float["2 3"]])
+
+
+def test_mixed_array_and_simple_types_no_scope_fails():
+  x = np.zeros((2, 3), dtype=np.float32)
+  with pytest.raises(frame_utils.NoActiveScopeError):
+    tgc.isinstance_(x, Float["2 3"] | int)
+  with pytest.raises(frame_utils.NoActiveScopeError):
+    tgc.isinstance_(12, Float["2 3"] | int)
+
+
+def test_isinstance_tuple_with_scope():
+  x = np.zeros((2, 3), dtype=np.float32)
+  with typechecked():
+    assert tgc.isinstance_(x, (Float["2 3"], int))
+    assert tgc.isinstance_(12, (Float["2 3"], int))
+    assert not tgc.isinstance_("a", (Float["2 3"], int))
+
+
+def test_isinstance_tuple_no_scope_fails():
+  x = np.zeros((2, 3), dtype=np.float32)
+  with pytest.raises(frame_utils.NoActiveScopeError):
+    tgc.isinstance_(x, (Float["2 3"], int))
+  with pytest.raises(frame_utils.NoActiveScopeError):
+    tgc.isinstance_(12, (Float["2 3"], int))
+
+
 def test_check_type_fails_without_scope():
   def unscoped(x):
     check_type(x, Float["a"])
@@ -173,3 +264,194 @@ def test_check_type_fails_without_scope():
 
   with pytest.raises(frame_utils.NoActiveScopeError):
     scoped_fn(x)
+
+
+# MARK: Phase 0 - Regression tests for $ structure keys in candidates
+
+
+def test_shape_checking_with_structure_in_scope():
+  x = np.zeros((2, 3), dtype=np.float32)
+  with typechecked():
+    check_type(x, Float["a b"])
+    s = scope_mod.get_current_scope(nested_ok=True)
+    s.candidates = [dict(c) | {"$S": "fake_treedef"} for c in s.candidates]
+    y = np.ones((2, 3), dtype=np.float32)
+    check_type(y, Float["a b"])
+
+
+def test_dim_view_str_ignores_structures():
+  x = np.zeros((2, 3), dtype=np.float32)
+  with typechecked():
+    check_type(x, Float["a b"])
+    s = scope_mod.get_current_scope(nested_ok=True)
+    s.candidates = [dict(c) | {"$S": "fake_treedef"} for c in s.candidates]
+    dv = dim_view.DimView(s)
+    dims_str = str(dv)
+    assert "$S" not in dims_str
+    assert "a" in dims_str
+
+
+def test_error_display_with_structures_does_not_crash():
+  x = np.zeros((2, 3), dtype=np.float32)
+  with typechecked():
+    check_type(x, Float["a b"])
+    s = scope_mod.get_current_scope(nested_ok=True)
+    s.candidates = [dict(c) | {"$T": "fake_treedef"} for c in s.candidates]
+    with pytest.raises(errors.KTypeCheckError) as exc_info:
+      check_type(np.ones((5,), dtype=np.int32), Float["a b"])
+    error_str = str(exc_info.value)
+    assert "$T" in error_str
+    assert "Tree Structures" in error_str
+
+
+# MARK: Phase 2 - PyTree structure binding tests
+
+
+def test_pytree_structure_binding():
+  with typechecked():
+    check_type({"a": 1, "b": (3, 4)}, pytree.PyTree[int, "$S"])
+
+
+def test_pytree_structure_same_match():
+  with typechecked():
+    tree1 = {"a": 1, "b": 2}
+    tree2 = {"a": 3, "b": 4}
+    check_type(tree1, pytree.PyTree[int, "$S"])
+    check_type(tree2, pytree.PyTree[int, "$S"])
+
+
+def test_pytree_structure_mismatch():
+  with typechecked():
+    check_type({"a": 1, "b": 2}, pytree.PyTree[int, "$S"])
+    with pytest.raises(errors.KTypeCheckError):
+      check_type([1, 2, 3], pytree.PyTree[int, "$S"])
+
+
+def test_pytree_structure_different_names():
+  with typechecked():
+    check_type({"a": 1, "b": 2}, pytree.PyTree[int, "$S"])
+    check_type([1, 2, 3], pytree.PyTree[int, "$T"])
+
+
+def test_pytree_structure_with_arrays():
+  with typechecked():
+    tree = {"x": np.zeros((3, 4), dtype=np.float32)}
+    check_type(tree, pytree.PyTree[Float["b n"], "$S"])
+
+
+def test_pytree_structure_in_typechecked_fn():
+  @typechecked
+  def f(x: pytree.PyTree[int, "$S"]) -> pytree.PyTree[int, "$S"]:
+    return x
+
+  assert f({"a": 1, "b": 2}) is not None
+  assert f({"a": 1, "b": 2}) is not None
+
+  @typechecked
+  def g(
+      x: pytree.PyTree[int, "$S"],
+  ) -> pytree.PyTree[int, "$S"]:
+    del x
+    return [1, 2, 3]
+
+  with pytest.raises(errors.KTypeCheckError):
+    g({"a": 1, "b": 2})
+
+
+# MARK: PyTree with registered JAX pytree node leaves (b/493013032)
+
+
+def test_pytree_with_registered_pytree_leaf():
+  with typechecked():
+    leaf = _LeafNode(x=1, y=2)
+    check_type({"a": leaf, "b": leaf}, pytree.PyTree[_LeafNode])
+
+
+def test_pytree_with_registered_pytree_leaf_fails():
+  with typechecked():
+    with pytest.raises(errors.KTypeCheckError, match="is not an instance of"):
+      check_type({"a": "not_a_leaf"}, pytree.PyTree[_LeafNode])
+
+
+def test_isinstance_pytree_with_registered_pytree_leaf():
+  with typechecked():
+    leaf = _LeafNode(x=1, y=2)
+    assert tgc.isinstance_({"a": leaf}, pytree.PyTree[_LeafNode])
+    assert not tgc.isinstance_({"a": "nope"}, pytree.PyTree[_LeafNode])
+
+
+# MARK: Shape spec typeguard integration
+
+
+def test_shape_spec_binds_dims():
+  """Shape['*b t'] binds dims so kt.dim and kt.shape can access them."""
+
+  @typechecked
+  def f(s: Shape["*b t"]):
+    del s  # unused
+    return dim_view.dim["t"], dim_view.dim["*b"]
+
+  t, b = f((2, 3, 7))
+  assert t == 7
+  assert b == (2, 3)
+
+
+def test_shape_spec_mismatch_raises():
+  """Passing a tuple that doesn't match the spec raises KTypeCheckError."""
+
+  @typechecked
+  def f(s: Shape["3 4"]):
+    del s  # unused
+
+  f((3, 4))  # should work
+
+  with pytest.raises(errors.KTypeCheckError, match="not shape-compatible"):
+    f((3, 5))
+
+
+def test_shape_spec_inconsistent_with_array_raises():
+  """Shape and array dims must be consistent."""
+
+  @typechecked
+  def f(s: Shape["*b t"], x: Float["*b t d"]):
+    del s  # unused
+    return x
+
+  # shape says *b=(2, 3), t=7, but array has different batch
+  x = np.zeros((4, 3, 7, 5), dtype=np.float32)
+  with pytest.raises(errors.KTypeCheckError, match="not shape-compatible"):
+    f((2, 3, 7), x)
+
+
+def test_shape_spec_in_union():
+  """Shape['*b t'] | None works correctly."""
+
+  @typechecked
+  def f(s: Shape["*b t"] | None):
+    del s  # unused
+    pass
+
+  f((2, 3, 7))  # valid shape
+  f(None)  # None is fine
+
+
+def test_shape_spec_non_shape_value_raises():
+  """Non-shape values (e.g. str) raise errors with Shape spec."""
+
+  @typechecked
+  def f(s: Shape["*b t"]):
+    del s  # unused
+
+  with pytest.raises(errors.KTypeCheckError, match="not a valid shape"):
+    f("hello")
+
+
+def test_bare_shape_in_typechecked():
+  """Bare Shape (no spec) still works as structural check in typechecked."""
+
+  @typechecked
+  def f(s: Shape):
+    return s
+
+  assert f((2, 3)) == (2, 3)
+  assert f([5, 6]) == [5, 6]

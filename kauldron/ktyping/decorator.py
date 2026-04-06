@@ -1,4 +1,4 @@
-# Copyright 2025 The kauldron Authors.
+# Copyright 2026 The kauldron Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -42,6 +42,7 @@ class _TypeCheckedPartial(epy.ContextManager):
   new_scope: bool = True
 
   def __call__(self, obj: _WrappableT) -> _WrappableT:
+    source = utils.CodeLocation.from_any(obj)
     # The decorator case.
     # Dataclasses
     if dataclasses.is_dataclass(obj):
@@ -52,7 +53,7 @@ class _TypeCheckedPartial(epy.ContextManager):
           _wrap_fn_with_typechecks(
               obj.__func__,
               new_scope=self.new_scope,
-              source=utils.CodeLocation.from_any(obj),
+              source=source,
           )
       )
     # Staticmethods
@@ -61,7 +62,7 @@ class _TypeCheckedPartial(epy.ContextManager):
           _wrap_fn_with_typechecks(
               obj.__func__,
               new_scope=self.new_scope,
-              source=utils.CodeLocation.from_any(obj),
+              source=source,
           )
       )
     elif isinstance(obj, property):
@@ -69,10 +70,14 @@ class _TypeCheckedPartial(epy.ContextManager):
     # Generator functions
     # TODO(klausg): support classmethod / staticmethod generator functions
     elif inspect.isgeneratorfunction(obj):
-      return _wrap_generator_with_typechecks(obj, new_scope=self.new_scope)
+      return _wrap_generator_with_typechecks(
+          obj, new_scope=self.new_scope, source=source
+      )
     # Functions and regular methods
     elif inspect.isfunction(obj):
-      return _wrap_fn_with_typechecks(obj, new_scope=self.new_scope)
+      return _wrap_fn_with_typechecks(
+          obj, new_scope=self.new_scope, source=source
+      )
     else:
       raise ValueError(f"Unsupported object type: {type(obj)}")
 
@@ -256,7 +261,7 @@ def _wrap_generator_with_typechecks(
       # Check argument types
       for argname, (value, annot) in annotated_args.items():
         check.assert_not_never(gen_fn, annot)
-        print(f"Checking argument {argname} = {value} with annot {annot}")
+
         try:
           check.check_type_internal(value, annot)
         except errors.TypeCheckError as exc:

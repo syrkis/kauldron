@@ -1,4 +1,4 @@
-# Copyright 2025 The kauldron Authors.
+# Copyright 2026 The kauldron Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -146,7 +146,7 @@ class IoULoss(base.Loss):
     gt_mask = einops.rearrange(targets, "... h w -> ... (h w)") > 0
     area_i = jnp.sum(pred_mask & gt_mask, axis=-1).astype(jnp.float32)
     area_u = jnp.sum(pred_mask | gt_mask, axis=-1).astype(jnp.float32)
-    actual_ious = area_i / jnp.clip(area_u, a_min=1.0)
+    actual_ious = area_i / jnp.clip(area_u, min=1.0)
 
     if self.use_l1_loss:
       loss = jnp.abs(pred_ious - actual_ious)

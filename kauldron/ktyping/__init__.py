@@ -1,4 +1,4 @@
-# Copyright 2025 The kauldron Authors.
+# Copyright 2026 The kauldron Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -41,6 +41,7 @@ from kauldron.ktyping.array_types import (
     Num,
     PRNGKey,
     PRNGKeyArray,
+    PRNGKeyLike,
     SInt,
     UInt,
     UInt16,
@@ -99,8 +100,9 @@ from kauldron.ktyping.array_types import (
     XUInt32,
     XUInt64,
     XUInt8,
-    # shape types
+    # other types
     Shape,
+    ArraySpec,
 )
 from kauldron.ktyping.config import (
     CONFIG,
@@ -118,6 +120,7 @@ from kauldron.ktyping.scope import get_current_scope
 from kauldron.ktyping.scope import ShapeScope
 from kauldron.ktyping.shape_tools import shape
 from kauldron.ktyping.typeguard_checkers import check_type
+from kauldron.ktyping.typeguard_checkers import isinstance_ as isinstance  # pylint: disable=redefined-builtin
 # pylint: enable=g-multiple-import, g-importing-member
 
 # Permissive dtype annotation that accepts:
@@ -129,3 +132,6 @@ DType = jax.typing.DTypeLike
 
 # Annotation for axes arguments (e.g. for `sum(array, axis=(1, 2))`)
 Axes = int | Sequence[int]
+
+# Annotation for element spec, e.g. as returned by datasets
+ElementSpec = PyTree[ArraySpec]

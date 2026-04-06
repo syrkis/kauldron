@@ -1,4 +1,4 @@
-# Copyright 2025 The kauldron Authors.
+# Copyright 2026 The kauldron Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -96,7 +96,7 @@ def _eval_shape(spec_str: str, candidates: CandidateDims) -> Shape:
     # }
     raise shape_spec.ShapeError(
         f"{spec_str!r} is ambiguous under the current set of possible"
-        " dim_values. Could be one of:/n - "
+        " dim_values. Could be one of:\n - "
         + "\n - ".join(f"{k!r}" for k in valid_shapes)
     )
   return valid_shapes.pop()  # return the only valid shape

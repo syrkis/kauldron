@@ -1,4 +1,4 @@
-# Copyright 2025 The kauldron Authors.
+# Copyright 2026 The kauldron Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -46,7 +46,7 @@ from flax import linen as nn
 import flax.struct
 import jax
 from kauldron import kd
-from kauldron.typing import PyTree  # pylint: disable=g-multiple-import,g-importing-member
+from kauldron.ktyping import PyTree  # pylint: disable=g-multiple-import,g-importing-member
 import optax
 
 

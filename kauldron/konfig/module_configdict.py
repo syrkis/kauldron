@@ -1,4 +1,4 @@
-# Copyright 2025 The kauldron Authors.
+# Copyright 2026 The kauldron Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,9 +19,12 @@ import functools
 import re
 import types
 from typing import Any
+
+from etils import epy
 from kauldron import konfig
 from kauldron import kontext
 from kauldron.konfig import configdict_base
+from kauldron.konfig import py_flag_utils
 
 
 class AutoNestedConfigDict(configdict_base.ConfigDict):
@@ -115,8 +118,7 @@ class ModuleConfigDict(AutoNestedConfigDict):
     else:
       return self.cli_str_arg
 
-  @functools.cached_property
-  def module_config(self) -> konfig.ConfigDict:
+  def get_module_config(self) -> konfig.ConfigDict:
     """Initialize config from config file.
 
     Returns:
@@ -131,11 +133,12 @@ class ModuleConfigDict(AutoNestedConfigDict):
         config = self.module.get_config(self.config_args)
       else:
         config = self.module.get_config()
-    except Exception as e:
-      raise ValueError(
-          f"Failed to instantiate config from module {self.module} with args"
-          f" {self.config_args}"
-      ) from e
+    except Exception as e:  # pylint: disable=broad-exception-caught
+      msg = f"Failed to instantiate config from {self.module.__name__!r}"
+      if self.config_args:
+        msg += f" with args {self.config_args}"
+      msg += ".\n\n"
+      epy.reraise(e, prefix=msg)
 
     # merge with cfg overrides which are stored in root of self.
     _apply_overrides(config, overrides=self.as_flat_dict())
@@ -182,6 +185,7 @@ def _apply_overrides(config: konfig.ConfigDict, overrides: dict[str, Any]):
   """Apply overrides to config."""
   for k, v in overrides.items():
     if not k.startswith("__args__"):
+      v = py_flag_utils.maybe_parse_py_flag_value(v)
       kontext.set_by_path(config, k, v)
 
 
@@ -190,4 +194,4 @@ def get_config_from_module(
 ) -> konfig.ConfigDict:
   """Get config from module and cli_str_arg."""
   modulecfg = ModuleConfigDict(module=module, cli_str_arg=cli_str_arg)
-  return modulecfg.module_config
+  return modulecfg.get_module_config()

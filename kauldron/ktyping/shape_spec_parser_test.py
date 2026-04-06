@@ -1,4 +1,4 @@
-# Copyright 2025 The kauldron Authors.
+# Copyright 2026 The kauldron Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -96,6 +96,10 @@ SHAPE_SPEC_EXAMPLES = [
             ChoiceDim(left=NamedDims("b"), right=NamedDims("c")),
         ),
     ),
+    (
+        "+_foo",
+        ShapeSpec(AnonDims("foo", length=(1, None))),
+    ),
 ]
 
 
@@ -104,6 +108,24 @@ def test_shape_parser(spec_str, expected_spec):
   parsed_spec = shape_spec_parser.parse(spec_str)
   assert parsed_spec == expected_spec
   assert repr(expected_spec) == spec_str
+
+
+@pytest.mark.parametrize(
+    "spec_str",
+    [
+        "2*a+b",
+        "a+b*c",
+        "(a+b)*c",
+        "a*b**c",
+        "(a*b)**c",
+        "a+b|c",
+        "-a+b",
+        "a//b+c",
+    ],
+)
+def test_repr_roundtrip(spec_str):
+  parsed_spec = shape_spec_parser.parse(spec_str)
+  assert repr(parsed_spec) == spec_str
 
 
 @pytest.mark.parametrize(
